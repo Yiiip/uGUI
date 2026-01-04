@@ -18,14 +18,20 @@ namespace UnityEngine.UI
     /// - Automatically applies per-edge softness to all child UI elements
     /// - Uses AdvancedSoftnessRenderer internally for true per-edge control
     /// - Maintains all RectMask2D benefits (no stencil buffer, fewer draw calls)
+    /// - Automatically manages AdvancedSoftnessRenderer components on children (hidden from Inspector)
     ///
     /// Usage: Add this component to a GameObject and set edgeSoftness.
     /// All child UI elements will automatically receive per-edge softness.
+    /// No need to manually add AdvancedSoftnessRenderer to children.
     /// </remarks>
     public class RectMask2DAdvanced : RectMask2D
     {
         [SerializeField]
         private Vector4 m_EdgeSoftness = new Vector4();
+
+        [SerializeField]
+        [Tooltip("Automatically manage AdvancedSoftnessRenderer components on child UI elements")]
+        private bool m_AutoManageRenderers = true;
 
         /// <summary>
         /// The softness to apply to each edge independently.
@@ -46,17 +52,46 @@ namespace UnityEngine.UI
             }
         }
 
+        /// <summary>
+        /// Whether to automatically manage AdvancedSoftnessRenderer components on child UI elements.
+        /// When enabled, AdvancedSoftnessRenderer components are automatically added and hidden.
+        /// </summary>
+        public bool autoManageRenderers
+        {
+            get { return m_AutoManageRenderers; }
+            set
+            {
+                if (m_AutoManageRenderers != value)
+                {
+                    m_AutoManageRenderers = value;
+                    if (value)
+                    {
+                        UpdateChildSoftness();
+                    }
+                    else
+                    {
+                        CleanupManagedRenderers();
+                    }
+                }
+            }
+        }
+
         private Dictionary<GameObject, AdvancedSoftnessRenderer> m_ChildRenderers =
             new Dictionary<GameObject, AdvancedSoftnessRenderer>();
 
         protected override void OnEnable()
         {
             base.OnEnable();
+            UpdateChildSoftness();
         }
 
         protected override void OnDisable()
         {
             base.OnDisable();
+            if (!m_AutoManageRenderers)
+            {
+                CleanupManagedRenderers();
+            }
         }
 
 #if UNITY_EDITOR
@@ -90,8 +125,8 @@ namespace UnityEngine.UI
 
         private void UpdateChildSoftness()
         {
-            // Skip if there's no softness to apply
-            if (m_EdgeSoftness == Vector4.zero)
+            // Skip if auto management is disabled
+            if (!m_AutoManageRenderers)
             {
                 return;
             }
@@ -99,6 +134,13 @@ namespace UnityEngine.UI
             // Only process if we're active
             if (!isActiveAndEnabled)
             {
+                return;
+            }
+
+            // If softness is zero, clean up all managed renderers
+            if (m_EdgeSoftness == Vector4.zero)
+            {
+                CleanupManagedRenderers();
                 return;
             }
 
@@ -142,6 +184,10 @@ namespace UnityEngine.UI
                     if (renderer == null)
                     {
                         renderer = childObj.AddComponent<AdvancedSoftnessRenderer>();
+                        // Hide the component from Inspector (only auto-managed components are hidden)
+#if UNITY_EDITOR
+                        renderer.hideFlags = HideFlags.HideInInspector;
+#endif
                     }
                     renderer.edgeSoftness = m_EdgeSoftness;
                     newRenderers[childObj] = renderer;
@@ -154,6 +200,11 @@ namespace UnityEngine.UI
             {
                 if (!newRenderers.ContainsKey(kvp.Key) || kvp.Value == null)
                 {
+                    // Remove the component we created
+                    if (kvp.Value != null && kvp.Key != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(kvp.Value);
+                    }
                     toRemove.Add(kvp.Key);
                 }
             }
@@ -166,10 +217,42 @@ namespace UnityEngine.UI
             m_ChildRenderers = newRenderers;
         }
 
+        private void CleanupManagedRenderers()
+        {
+            // Remove all AdvancedSoftnessRenderer components that were auto-managed
+            var toDestroy = new List<AdvancedSoftnessRenderer>();
+            foreach (var kvp in m_ChildRenderers)
+            {
+                if (kvp.Value != null)
+                {
+                    toDestroy.Add(kvp.Value);
+                }
+            }
+
+            // Destroy components outside the loop
+            foreach (var renderer in toDestroy)
+            {
+                if (renderer != null)
+                {
+                    if (Application.isPlaying)
+                        UnityEngine.Object.Destroy(renderer);
+                    else
+                        UnityEngine.Object.DestroyImmediate(renderer);
+                }
+            }
+
+            m_ChildRenderers.Clear();
+        }
+
         protected override void OnDestroy()
         {
             base.OnDestroy();
-            m_ChildRenderers.Clear();
+            CleanupManagedRenderers();
+        }
+
+        protected void OnTransformChildrenChanged()
+        {
+            UpdateChildSoftness();
         }
 
         /// <summary>
