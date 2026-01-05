@@ -47,7 +47,9 @@ namespace UnityEngine.UI
                 m_EdgeSoftness.y = Mathf.Max(0, value.y);
                 m_EdgeSoftness.z = Mathf.Max(0, value.z);
                 m_EdgeSoftness.w = Mathf.Max(0, value.w);
-                UpdateChildSoftness();
+
+                // Request update to apply changes
+                RequestUpdate();
                 MaskUtilities.Notify2DMaskStateChanged(this);
             }
         }
@@ -66,7 +68,7 @@ namespace UnityEngine.UI
                     m_AutoManageRenderers = value;
                     if (value)
                     {
-                        UpdateChildSoftness();
+                        RequestUpdate();
                     }
                     else
                     {
@@ -79,10 +81,12 @@ namespace UnityEngine.UI
         private Dictionary<GameObject, AdvancedSoftnessRenderer> m_ChildRenderers =
             new Dictionary<GameObject, AdvancedSoftnessRenderer>();
 
+        private bool m_Dirty = false;
+
         protected override void OnEnable()
         {
             base.OnEnable();
-            UpdateChildSoftness();
+            RequestUpdate();
         }
 
         protected override void OnDisable()
@@ -92,6 +96,12 @@ namespace UnityEngine.UI
             {
                 CleanupManagedRenderers();
             }
+        }
+
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            CleanupManagedRenderers();
         }
 
 #if UNITY_EDITOR
@@ -108,8 +118,19 @@ namespace UnityEngine.UI
             if (!IsActive())
                 return;
 
-            UpdateChildSoftness();
-            MaskUtilities.Notify2DMaskStateChanged(this);
+            // Mark as dirty and schedule update
+            m_Dirty = true;
+
+            // Schedule delayed update in editor to avoid serialization issues
+            if (!Application.isPlaying)
+            {
+                UnityEditor.EditorApplication.delayCall += () =>
+                {
+                    if (this != null)
+                        PerformUpdate();
+                };
+                UnityEditor.EditorUtility.SetDirty(this);
+            }
         }
 #endif
 
@@ -120,11 +141,48 @@ namespace UnityEngine.UI
         public override void UpdateClipSoftness()
         {
             base.UpdateClipSoftness();
-            UpdateChildSoftness();
+            PerformUpdate();
         }
 
-        private void UpdateChildSoftness()
+        private void RequestUpdate()
         {
+            // In runtime mode, perform update immediately
+            if (Application.isPlaying && isActiveAndEnabled)
+            {
+                PerformUpdate();
+                return;
+            }
+
+            m_Dirty = true;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                // In editor mode, schedule delayed update to avoid serialization issues
+                UnityEditor.EditorApplication.delayCall += () =>
+                {
+                    if (this != null && m_Dirty)
+                        PerformUpdate();
+                };
+            }
+#endif
+        }
+
+#if UNITY_EDITOR
+        private void Update()
+        {
+            // Backup: process any remaining dirty flags in editor mode
+            if (m_Dirty && isActiveAndEnabled && !Application.isPlaying)
+            {
+                PerformUpdate();
+            }
+        }
+#endif
+
+        private void PerformUpdate()
+        {
+            m_Dirty = false;
+
             // Skip if auto management is disabled
             if (!m_AutoManageRenderers)
             {
@@ -137,19 +195,18 @@ namespace UnityEngine.UI
                 return;
             }
 
-            // If softness is zero, clean up all managed renderers
-            if (m_EdgeSoftness == Vector4.zero)
-            {
-                CleanupManagedRenderers();
-                return;
-            }
+            UpdateChildSoftness();
+        }
 
+        private void UpdateChildSoftness()
+        {
             // Get all Graphic children (UI elements that can be masked)
             var graphics = new List<Graphic>();
             GetComponentsInChildren(false, graphics);
 
             // Update existing renderers and add new ones
             var newRenderers = new Dictionary<GameObject, AdvancedSoftnessRenderer>();
+            var renderersToDestroy = new List<AdvancedSoftnessRenderer>();
 
             foreach (var graphic in graphics)
             {
@@ -168,20 +225,21 @@ namespace UnityEngine.UI
 
                 // Get or create renderer
                 AdvancedSoftnessRenderer renderer;
-                if (m_ChildRenderers.TryGetValue(childObj, out renderer))
+                if (m_ChildRenderers.TryGetValue(childObj, out renderer) && renderer != null)
                 {
                     // Update existing renderer
-                    if (renderer != null)
-                    {
-                        renderer.edgeSoftness = m_EdgeSoftness;
-                        newRenderers[childObj] = renderer;
-                    }
+                    renderer.edgeSoftness = m_EdgeSoftness;
+                    newRenderers[childObj] = renderer;
                 }
                 else
                 {
-                    // Create new renderer
-                    renderer = childObj.GetComponent<AdvancedSoftnessRenderer>();
-                    if (renderer == null)
+                    // Create new renderer or use existing one
+                    if (existingRenderer != null)
+                    {
+                        // Use the existing renderer (user created it but it wasn't tracked)
+                        renderer = existingRenderer;
+                    }
+                    else
                     {
                         renderer = childObj.AddComponent<AdvancedSoftnessRenderer>();
                         // Hide the component from Inspector (only auto-managed components are hidden)
@@ -194,43 +252,20 @@ namespace UnityEngine.UI
                 }
             }
 
-            // Clean up renderers for destroyed children
-            var toRemove = new List<GameObject>();
+            // Find renderers to destroy
             foreach (var kvp in m_ChildRenderers)
             {
-                if (!newRenderers.ContainsKey(kvp.Key) || kvp.Value == null)
+                if (!newRenderers.ContainsKey(kvp.Key) && kvp.Value != null)
                 {
-                    // Remove the component we created
-                    if (kvp.Value != null && kvp.Key != null)
-                    {
-                        UnityEngine.Object.DestroyImmediate(kvp.Value);
-                    }
-                    toRemove.Add(kvp.Key);
+                    renderersToDestroy.Add(kvp.Value);
                 }
             }
 
-            foreach (var key in toRemove)
-            {
-                m_ChildRenderers.Remove(key);
-            }
-
+            // Update the dictionary first
             m_ChildRenderers = newRenderers;
-        }
 
-        private void CleanupManagedRenderers()
-        {
-            // Remove all AdvancedSoftnessRenderer components that were auto-managed
-            var toDestroy = new List<AdvancedSoftnessRenderer>();
-            foreach (var kvp in m_ChildRenderers)
-            {
-                if (kvp.Value != null)
-                {
-                    toDestroy.Add(kvp.Value);
-                }
-            }
-
-            // Destroy components outside the loop
-            foreach (var renderer in toDestroy)
+            // Destroy components after updating dictionary to avoid serialization issues
+            foreach (var renderer in renderersToDestroy)
             {
                 if (renderer != null)
                 {
@@ -240,19 +275,28 @@ namespace UnityEngine.UI
                         UnityEngine.Object.DestroyImmediate(renderer);
                 }
             }
+        }
+
+        private void CleanupManagedRenderers()
+        {
+            // Remove all AdvancedSoftnessRenderer components that were auto-managed
+            foreach (var kvp in m_ChildRenderers)
+            {
+                if (kvp.Value != null)
+                {
+                    if (Application.isPlaying)
+                        UnityEngine.Object.Destroy(kvp.Value);
+                    else
+                        UnityEngine.Object.DestroyImmediate(kvp.Value);
+                }
+            }
 
             m_ChildRenderers.Clear();
         }
 
-        protected override void OnDestroy()
-        {
-            base.OnDestroy();
-            CleanupManagedRenderers();
-        }
-
         protected void OnTransformChildrenChanged()
         {
-            UpdateChildSoftness();
+            RequestUpdate();
         }
 
         /// <summary>
