@@ -18,11 +18,11 @@ namespace UnityEngine.UI
     /// - Automatically applies per-edge softness to all child UI elements
     /// - Uses AdvancedSoftnessRenderer internally for true per-edge control
     /// - Maintains all RectMask2D benefits (no stencil buffer, fewer draw calls)
-    /// - Automatically manages AdvancedSoftnessRenderer components on children (hidden from Inspector)
+    /// - Automatically manages AdvancedSoftnessRenderer components on children (visible in Inspector)
     ///
     /// Usage: Add this component to a GameObject and set edgeSoftness.
     /// All child UI elements will automatically receive per-edge softness.
-    /// No need to manually add AdvancedSoftnessRenderer to children.
+    /// AdvancedSoftnessRenderer components will be added automatically and are visible in Inspector.
     /// </remarks>
     public class RectMask2DAdvanced : RectMask2D
     {
@@ -216,37 +216,28 @@ namespace UnityEngine.UI
                 if (childObj == gameObject)
                     continue;
 
-                // Skip if it already has an AdvancedSoftnessRenderer that wasn't created by us
+                // Get existing renderer or create new one
                 AdvancedSoftnessRenderer existingRenderer = childObj.GetComponent<AdvancedSoftnessRenderer>();
-                if (existingRenderer != null && !m_ChildRenderers.ContainsKey(childObj))
-                {
-                    continue; // Don't manage renderers created by user
-                }
 
                 // Get or create renderer
                 AdvancedSoftnessRenderer renderer;
                 if (m_ChildRenderers.TryGetValue(childObj, out renderer) && renderer != null)
                 {
-                    // Update existing renderer
+                    // Update existing renderer (managed by us)
+                    renderer.edgeSoftness = m_EdgeSoftness;
+                    newRenderers[childObj] = renderer;
+                }
+                else if (existingRenderer != null)
+                {
+                    // Use the existing renderer (user created it or auto-created before)
+                    renderer = existingRenderer;
                     renderer.edgeSoftness = m_EdgeSoftness;
                     newRenderers[childObj] = renderer;
                 }
                 else
                 {
-                    // Create new renderer or use existing one
-                    if (existingRenderer != null)
-                    {
-                        // Use the existing renderer (user created it but it wasn't tracked)
-                        renderer = existingRenderer;
-                    }
-                    else
-                    {
-                        renderer = childObj.AddComponent<AdvancedSoftnessRenderer>();
-                        // Hide the component from Inspector (only auto-managed components are hidden)
-#if UNITY_EDITOR
-                        renderer.hideFlags = HideFlags.HideInInspector;
-#endif
-                    }
+                    // Create new renderer
+                    renderer = childObj.AddComponent<AdvancedSoftnessRenderer>();
                     renderer.edgeSoftness = m_EdgeSoftness;
                     newRenderers[childObj] = renderer;
                 }

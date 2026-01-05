@@ -30,13 +30,18 @@ namespace UnityEngine.UI
             get { return m_EdgeSoftness; }
             set
             {
-                if (m_EdgeSoftness != value)
+                m_EdgeSoftness.x = Mathf.Max(0, value.x);
+                m_EdgeSoftness.y = Mathf.Max(0, value.y);
+                m_EdgeSoftness.z = Mathf.Max(0, value.z);
+                m_EdgeSoftness.w = Mathf.Max(0, value.w);
+                SetMaterialDirty();
+
+                // Update clip rect on the modified material immediately if it exists
+                if (m_ModifiedMaterial != null)
                 {
-                    m_EdgeSoftness.x = Mathf.Max(0, value.x);
-                    m_EdgeSoftness.y = Mathf.Max(0, value.y);
-                    m_EdgeSoftness.z = Mathf.Max(0, value.z);
-                    m_EdgeSoftness.w = Mathf.Max(0, value.w);
-                    SetMaterialDirty();
+                    m_ModifiedMaterial.SetVector(EdgeSoftnessID, m_EdgeSoftness);
+                    m_ModifiedMaterial.SetFloat(UseAdvancedSoftnessID, 1.0f);
+                    UpdateMaterialClipRect();
                 }
             }
         }
