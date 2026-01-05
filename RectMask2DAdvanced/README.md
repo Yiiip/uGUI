@@ -4,7 +4,7 @@
 
 ### 核心组件
 1. **RectMask2DAdvanced.cs** - 高级遮罩组件（自动管理子物体的软化效果）
-2. **AdvancedSoftnessRenderer.cs** - 内部材质渲染器（自动添加，用户不可见）
+2. **AdvancedSoftnessRenderer.cs** - 内部材质渲染器（自动添加，在 Inspector 中可见）
 3. **UI-AdvancedSoftness.shader** - 自定义Shader（支持四边独立软化）
 
 ### 辅助文件
@@ -179,7 +179,7 @@ mask.SetVerticalSoftness(20f);
 **A:**
 - 检查 `autoManageRenderers` 是否开启
 - 确认子物体是否是 Graphic 组件
-- 如果子物体手动添加了 `AdvancedSoftnessRenderer`，`RectMask2DAdvanced` 不会管理它
+- 确认子物体的 `AdvancedSoftnessRenderer` 的 `useAdvancedSoftness` 是否为 true
 
 ### Q3: 边缘看起来很硬，没有淡化效果？
 **A:**
@@ -197,7 +197,13 @@ mask.SetVerticalSoftness(20f);
 **A:**
 1. 在需要的子物体上手动添加 `AdvancedSoftnessRenderer` 组件
 2. 单独设置该子物体的 `edgeSoftness` 属性
-3. `RectMask2DAdvanced` 不会管理手动添加的组件
+
+### Q6: 运行时修改 edgeSoftness 没有反应？
+**A:**
+- 确认 `RectMask2DAdvanced` 组件处于 `active` 状态
+- 确认 `autoManageRenderers` 为 `true`
+- 确保子物体的 `AdvancedSoftnessRenderer.useAdvancedSoftness` 为 `true`
+- 确保子物体上有 `Graphic` 组件（Image、Text 等）
 
 ---
 
@@ -215,7 +221,8 @@ mask.SetVerticalSoftness(20f);
 
 ### 自动管理机制
 - `RectMask2DAdvanced` 自动为所有 Graphic 子物体添加 `AdvancedSoftnessRenderer`
-- 自动添加的组件使用 `HideFlags.HideInInspector`，在 Inspector 中不可见
+- `AdvancedSoftnessRenderer` 组件在 Inspector 中可见，可手动调整
+- 无论 renderer 是自动添加还是手动创建，都会被 `RectMask2DAdvanced` 更新
 - 当子物体被销毁或移除时，自动清理对应的组件
 
 ### 材质管理
