@@ -74,7 +74,18 @@ namespace Meow.Runtime.HotUpdate
         public AnimationCurve CurveY => _curveY;
 
         /// <summary>抖动持续时间</summary>
-        public float Duration => _duration;
+        public float Duration
+        {
+            get => _duration;
+            set
+            {
+                if (!Mathf.Approximately(_duration, value))
+                {
+                    _duration = Mathf.Max(0f, value);
+                    Generate();
+                }
+            }
+        }
 
         /// <summary>采样分辨率（关键点数量）</summary>
         public int Resolution => _resolution;
