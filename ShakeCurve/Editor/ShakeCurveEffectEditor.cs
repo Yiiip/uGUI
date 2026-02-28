@@ -42,6 +42,7 @@ namespace Meow.Runtime.HotUpdate
         private bool _showEnvelopePreview = true;
         private bool _showPlayPreview = true;
         private bool _showEventsPreview = true;
+        private bool _frameByFrame = false;
 
         private void OnEnable()
         {
@@ -510,6 +511,10 @@ namespace Meow.Runtime.HotUpdate
         private void DrawActionButtons()
         {
             EditorGUILayout.Space();
+
+            // Frame By Frame Toggle
+            _frameByFrame = EditorGUILayout.Toggle(new GUIContent("Frame By Frame", "勾选后播放会暂停编辑器，可逐帧预览效果"), _frameByFrame);
+
             EditorGUILayout.BeginHorizontal();
 
             // 播放按钮 - 播放中时置灰
@@ -655,6 +660,12 @@ namespace Meow.Runtime.HotUpdate
             else
             {
                 _effect.Play();
+
+                // 逐帧暂停功能
+                if (_frameByFrame)
+                {
+                    EditorApplication.isPaused = true;
+                }
             }
         }
     }
