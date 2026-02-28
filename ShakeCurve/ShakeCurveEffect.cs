@@ -62,6 +62,15 @@ namespace Meow.Runtime.HotUpdate
         public float Progress { get; private set; }
         public float ElapsedTime { get; private set; }
 
+        /// <summary>
+        /// 是否忽略时间缩放
+        /// </summary>
+        public bool IgnoreTimeScale
+        {
+            get => _ignoreTimeScale;
+            set => _ignoreTimeScale = value;
+        }
+
         #endregion
 
         #region Private Fields
